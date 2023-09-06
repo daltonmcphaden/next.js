@@ -103,6 +103,7 @@ import {
   TurboPackConnectedAction,
 } from '../../dev/hot-reloader-types'
 import { debounce } from '../../utils'
+import { AppPathsCollector } from '../app-paths-collector'
 
 const wsServer = new ws.Server({ noServer: true })
 
@@ -162,7 +163,7 @@ async function startWatcher(opts: SetupOpts) {
   const serverFields: {
     actualMiddlewareFile?: string | undefined
     actualInstrumentationHookFile?: string | undefined
-    appPathRoutes?: Record<string, string | string[]>
+    appPathRoutes?: Record<string, ReadonlyArray<string>>
     middleware?:
       | {
           page: string
@@ -1305,7 +1306,7 @@ async function startWatcher(opts: SetupOpts) {
       let middlewareMatchers: MiddlewareMatcher[] | undefined
       const routedPages: string[] = []
       const knownFiles = wp.getTimeInfoEntries()
-      const appPaths: Record<string, string[]> = {}
+      const appPaths = new AppPathsCollector()
       const pageNameSet = new Set<string>()
       const conflictingAppPagePaths = new Set<string>()
       const appPageFilePaths = new Map<string, string>()
@@ -1468,10 +1469,7 @@ async function startWatcher(opts: SetupOpts) {
 
           const originalPageName = pageName
           pageName = normalizeAppPath(pageName).replace(/%5F/g, '_')
-          if (!appPaths[pageName]) {
-            appPaths[pageName] = []
-          }
-          appPaths[pageName].push(originalPageName)
+          appPaths.push(pageName, originalPageName)
 
           if (useFileSystemPublicRoutes) {
             appFiles.add(pageName)
@@ -1537,7 +1535,7 @@ async function startWatcher(opts: SetupOpts) {
       let clientRouterFilters: any
       if (nextConfig.experimental.clientRouterFilter) {
         clientRouterFilters = createClientRouterFilter(
-          Object.keys(appPaths),
+          appPaths.pathnames(),
           nextConfig.experimental.clientRouterFilterRedirects
             ? ((nextConfig as any)._originalRedirects || []).filter(
                 (r: any) => !r.internal
@@ -1682,9 +1680,7 @@ async function startWatcher(opts: SetupOpts) {
       }
 
       // Make sure to sort parallel routes to make the result deterministic.
-      serverFields.appPathRoutes = Object.fromEntries(
-        Object.entries(appPaths).map(([k, v]) => [k, v.sort()])
-      )
+      serverFields.appPathRoutes = appPaths.toObject()
       await propagateToWorkers('appPathRoutes', serverFields.appPathRoutes)
 
       // TODO: pass this to fsChecker/next-dev-server?
@@ -1704,7 +1700,7 @@ async function startWatcher(opts: SetupOpts) {
         : undefined
 
       opts.fsChecker.interceptionRoutes =
-        generateInterceptionRoutesRewrites(Object.keys(appPaths))?.map((item) =>
+        generateInterceptionRoutesRewrites(appPaths.pathnames())?.map((item) =>
           buildCustomRoute(
             'before_files_rewrite',
             item,
