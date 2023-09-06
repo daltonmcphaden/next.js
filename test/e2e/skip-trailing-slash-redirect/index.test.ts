@@ -245,6 +245,9 @@ describe('skip-trailing-slash-redirect', () => {
   })
 
   it('should not apply trailing slash to links on client', async () => {
+    const $ = await next.render$('/')
+    expect($('#to-another-with-slash').attr('href')).toBe('/another/')
+
     const browser = await webdriver(next.url, '/')
     await browser.eval('window.beforeNav = 1')
 
